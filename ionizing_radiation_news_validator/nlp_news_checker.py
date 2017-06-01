@@ -3,28 +3,28 @@ import json
 import re
 class NLPNewsChecker:
     def __init__(self, url):
-        self.url = url
+        self.__url = url
         self.__download_page()
 
     def __download_page(self):
-        r = requests.get(self.url)
+        r = requests.get(self.__url)
         if(not r.status_code == 200):
             print("Can't download page " + r.status_code)
         else:
-            self.article_data = r.text
+            self.__article_data = r.text
 
     def get_date_of_article(self):
-        reg1 = re.search("[0-9]{2}-[0-9]{2}-[0-9]{4}", self.article_data)
-        reg2 = re.search("[0-9]{4}-[0-9]{2}-[0-9]{2}", self.article_data)
+        reg1 = re.search("[0-9]{2}-[0-9]{2}-[0-9]{4}", self.__article_data)
+        reg2 = re.search("[0-9]{4}-[0-9]{2}-[0-9]{2}", self.__article_data)
         if not (reg1 or reg2):
             print("I can't find date of article")
         else:
             if reg1:
                 (date_s, date_e) = reg2.span()
-                self.date = self.article_data[date_s + 6 :date_e] + self.article_data[date_s + 2 :date_e - 2] + self.article_data[date_s : date_s + 2]
+                self.date = self.__article_data[date_s + 6 :date_e] + self.__article_data[date_s + 2 :date_e - 2] + self.__article_data[date_s : date_s + 2]
             if reg2:
                 (date_s, date_e) = reg2.span()
-                self.date = self.article_data[date_s:date_e]
+                self.date = self.__article_data[date_s:date_e]
 
     def __get_european_countries_with_capital_cities(self):
         r = requests.get("https://restcountries.eu/rest/v2/region/europe")
@@ -40,7 +40,7 @@ class NLPNewsChecker:
     def __scan_text(self, list_of_words):
         result = list()
         for word in list_of_words:
-            reg_res = re.search(word, self.article_data)
+            reg_res = re.search(word, self.__article_data)
             if reg_res:
                 result.append(word)
         return result
@@ -53,7 +53,7 @@ class NLPNewsChecker:
             for country in self.enumerated_countries:
                     print(country)
         else:
-            print("There is no enumerated european country in article.")
+            print("There are no enumerated country in article.")
 
     def is_this_article_about_radiation(self):
         if self.__scan_text(["solar"]):
@@ -66,3 +66,6 @@ class NLPNewsChecker:
             word_list.append(word["word"])
         if len(self.__scan_text(word_list)) > 4:
             print("This article is about nuclear radiation")
+        else:
+            print("This article is not about nuclear radiation")
+        self.article_about_radiation = len(self.__scan_text(word_list)) > 4
