@@ -1,28 +1,53 @@
 from nlp_news_checker import NLPNewsChecker
 from geocoding import Geocoding
+from exceptions import *
 import re
 import requests
 import numpy
 import time
 import datetime
+import matplotlib.pyplot as plt
 
 class RadiationScrapingTool:
     def __init__(self, nlp_news_checker = None):
-        print
-        a = self.get_sensor_data_from_day(6, "2017-05-01")
-        print(a)
-        print(len(a))
-
         self.__geocoding = Geocoding()
         if not nlp_news_checker == None:
             if not isinstance(nlp_news_checker, NLPNewsChecker):
-                raise InvalidArgument()
+                raise InvalidArgument("RadiationScrapingTool() or RadiationScrapingTool(instance_of_nlp_news_checker)")
             try:
-                self.date = nlp_news_checker.date
-                self.countries = nlp_news_checker.enumerated_countries
+                self.__date = nlp_news_checker.date
+                self.__cities = self.__map_list_of_countries_to_capital_cities(nlp_news_checker.enumerated_countries)
+                self.__countries = nlp_news_checker.enumerated_countries
             except:
                 raise NLPNewsCheckerNotValid()
+        else:
+            d = datetime.datetime.now()
+            self.__date = str(d.year) + "-" + str(d.month) + "-" + str(d.day)
+            self.__countries = list()
+            self.__cities = list()
+        self.__get_list_of_active_sensors_and_reactors()
 
+    def set_up_date(self, given_date):
+        if not re.match("^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}$", given_date):
+            print("Date is not valid, please type date in formay YYYY-MM-DD")
+        else:
+            self.__date = given_date
+
+    def set_up_list_of_countries(self, countries):
+        if not isinstance(countries, list):
+            print("Please provide countries in list")
+        else:
+            self.__cities = self.__map_list_of_countries_to_capital_cities(countries)
+            self.__countries = countries
+
+    def __map_list_of_countries_to_capital_cities(self, countries_list):
+        result = list()
+        for country in countries_list:
+            try:
+                result.append(Geocoding.get_capital_city_by_country(country))
+            except Not200Code:
+                print("Capital of " + country + " not found")
+        return result
 
     def __get_list_of_active_sensors_and_reactors(self):
         r = requests.get("http://radioactiveathome.org/map/")
@@ -40,8 +65,8 @@ class RadiationScrapingTool:
                 sensors_raw.append(line)
             if regex_reactor.search(line):
                 reactors_raw.append(line)
-        (self.__reactors_names, self.__reactors_coords) = self.__get_dict_of_reactors(reactors_raw)
-        self.__sensors_numpy = self.__get_dict_of_sensors(sensors_raw)
+        (self.__reactors_names, self.__reactors_coords) = self.__get_array_tuple_of_reactors(reactors_raw)
+        self.__sensors_numpy = self.__get_array_of_sensors(sensors_raw)
 
     # Converts list of string to numpy array with structure id, latitude, longitude
     def __get_array_of_sensors(self, sensors_raw):
@@ -84,14 +109,14 @@ class RadiationScrapingTool:
             result_names.append(line[start:end])
         return (result_names, result_coords)
 
-    def get_list_of_sensors_in_range_km(self, coords, range_km):
+    def __get_list_of_sensors_in_range_km(self, coords, range_km):
         list_of_sensors = list()
         for sensor in self.__sensors_numpy:
             if self.__geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2])) < range_km:
                 list_of_sensors.append((sensor[0], sensor[1], sensor[2]))
         return list_of_sensors
 
-    def get_list_of_reactors_in_range_km(self, coords, range_km):
+    def __get_list_of_reactors_in_range_km(self, coords, range_km):
         list_of_reactors = list()
         for i, reactor in enumerate(self.__reactors_coords):
             if self.__geocoding.compute_distance_between_two_coordinates(coords, reactor[0], reactor[1]) < range_km:
@@ -99,7 +124,7 @@ class RadiationScrapingTool:
 
     # Scrape pages, download data and return data from one particular day
     # sensor_id - int, date format YYYY-MM-DD - string
-    # Result is returned in numpy array format timestamp, measurement
+    # Result is returned in numpy array format [timestamp, measurement]
     def __get_sensor_data_from_day(self, sensor_id, date):
         url_1 = "http://radioactiveathome.org/boinc/gettrickledata.php?start="
         url_2 = "&hostid="
@@ -108,7 +133,6 @@ class RadiationScrapingTool:
         results = list()
 
         while True:
-            print(url_1 + str(current_measurement_id) + url_2 + str(sensor_id))
             r = requests.get(url_1 + str(current_measurement_id) + url_2 + str(sensor_id))
             if(not r.status_code == 200):
                 raise Not200Code()
@@ -123,7 +147,6 @@ class RadiationScrapingTool:
             (first_record_date, _, _, _) = self.__extract_data_time_counts_timescale_from_line(splitted_data[1])
             if self.__convert_date_to_timestamp(first_record_date) > searched_date:
                 break; # current data is newer than searched
-            print(len(splitted_data))
 
             (last_record_date, _, _, _) = self.__extract_data_time_counts_timescale_from_line(splitted_data[len(splitted_data) - 1])
             if self.__convert_date_to_timestamp(last_record_date) < searched_date:
@@ -140,9 +163,6 @@ class RadiationScrapingTool:
     def __extract_data_time_counts_timescale_from_line(self, line):
         splitted_line = line.split(",")
         splitted_date_time = splitted_line[3].split(" ")
-        print(splitted_line)
-        print()
-        print(splitted_date_time)
         return (splitted_date_time[0], splitted_date_time[1], int(splitted_line[2]), float(splitted_line[6]))
 
     def __convert_date_time_to_timestamp(self, date, hours=""):
@@ -154,33 +174,104 @@ class RadiationScrapingTool:
     def __convert_counts_per_time_to_uSv(self, counts, timescale):
         return counts / timescale / 171.232876
 
-class InvalidArgument(Exception):
-    def __init__(self, value="Invalid argument. RadiationScrapingTool() or RadiationScrapingTool(instance_of_nlp_news_checker)"):
-            self.value = value
+    # Download data from sensors in range x km from city
+    def check_radiation_in_city_day(self, city, day, range_km = 100):
+        city_coords = self.__geocoding.get_city_coords(city)
+        sensors_list = self.__get_list_of_sensors_in_range_km(city_coords, range_km)
+        for i, sensor in enumerate(sensors_list):
+            self.__download_data_for_sensor_and_analyse_it(sensor, day, city_coords)
 
-    def __str__(self):
-        return repr(self.value)
+    def __download_data_for_sensor_and_analyse_it(self, sensor, day, city_coords):
+        raw_data = self.__get_sensor_data_from_day(sensor[0], day)
+        if raw_data.any():
+            prepared_data = RadiationScrapingTool.__get_min_max_avg_per_hour(raw_data)
+            RadiationScrapingTool.__create_min_max_avg_graph(prepared_data, (sensor[1], sensor[2]), " Distance from city: %.2f km." % Geocoding.compute_distance_between_two_coordinates(city_coords, (sensor[1], sensor[2])))
+            if RadiationScrapingTool.__is_any_raised_avg_measurement(prepared_data):
+                print("Warning: At least one average measurement is raised. (> 0.3 uSv/h)")
+            else:
+                print("All average measurements are in quota")
+            percentage_of_raised_measurements = RadiationScrapingTool.__get_percentage_of_raised_measurements(raw_data)
+            print("This sensor has %2.2f%% measurements above 0.3 uSv/h" % percentage_of_raised_measurements)
+        else:
+            print("There is no data from this day - sensor sensor position " + str(sensor[1]) + '° ' + str(sensor[1]) + '°')
 
-class NLPNewsCheckerNotValid(Exception):
-    def __init__(self, value="Given instance of NLPNewsChecker is not valid, please check if you found date and countries in article"):
-            self.value = value
 
-    def __str__(self):
-        return repr(self.value)
+    def __get_min_max_avg_per_hour(sensor_data):
+        result = numpy.zeros((24,3))
+        timestamp = int(sensor_data[0][0])
+        delta = datetime.timedelta(hours = 1)
+        daytime = datetime.datetime.fromtimestamp(timestamp) + delta
+        timestamp  = daytime.timestamp()
 
-class Not200Code(Exception):
-    def __init__(self, value="Returned http code is not 200"):
-            self.value = value
+        i = 0
+        for j in range(24):
+            avg = count = 0
+            if i < len(sensor_data):
+                min_v = max_v = sensor_data[i][1]
+            while i < len(sensor_data) and sensor_data[i][0] < timestamp:
+                data = sensor_data[i][1]
+                avg += data
+                count += 1
+                if min_v > data:
+                    min_v = data
+                if max_v < data:
+                    max_v = data
+                i += 1
+            if count > 0:
+                result[j][0] = min_v
+                result[j][1] = max_v
+                result[j][2] = avg/count
+            daytime = daytime + delta
+            timestamp  = daytime.timestamp()
+        return result
 
-    def __str__(self):
-        return repr(self.value)
+    def __create_min_max_avg_graph(prepared_data, coords, extra_info = ''):
+        (c1, c2) = coords
+        fig, ax = plt.subplots(figsize=(15,5))
+        width = 1
+        min_v = ax.bar([x * 4 for x in range(24)], prepared_data[:,0], width, color='g')
+        max_v = ax.bar([x * 4 + 1 for x in range(24)], prepared_data[:,1], width, color='r')
+        avg_v = ax.bar([x * 4 + 2 for x in range(24)], prepared_data[:,2], width, color='b')
+        ax.set_ylabel('Radiation [uSv]')
+        ax.set_title('Minimum, maximum, average radiation per hour - sensor position ' + str(c1) + '° ' + str(c2) + '°' + extra_info)
+        ax.set_xticks([x * 4 for x in range(24)])
+        ax.set_xticklabels([x for x in range(24)])
+        ax.legend((min_v[0], max_v[0], avg_v[0]), ('min', 'max', 'avg'))
+        plt.show()
 
-'''class DataRelatedToDateNotFound(Exception):
-    def __init__(self, value="Data not found. Please be aware that data is limited to maximum 2 months backwards")
-            self.value = value
+    def __is_any_raised_avg_measurement(prepared_data):
+        for measurement in prepared_data:
+            if measurement[2] > 0.3:
+                return True
+        return False
 
-    def __str__(self):
-        return repr(self.value)
-'''
+    def __get_percentage_of_raised_measurements(raw_data):
+        count = 0
+        for measurement in raw_data:
+            if measurement[1] > 0.3:
+                count += 1
+        return count * 100 / len(raw_data)
+
+    def __find_closest_sensor(self, coords):
+        closest_sensor_id = -1
+        closest_sensor_distance = 0
+        for sensor in self.__sensors_numpy:
+            distance = self.__geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2]))
+            if distance < closest_sensor_distance:
+                closest_sensor_distance = distance
+                closest_sensor = sensor
+        return closest_sensor
+
+    def check_radiation_in_cities(self):
+        city_list_data = list()
+        for i, city in enumerate(self.cities):
+            city_coords = self.__geocoding.get_city_coords(city)
+            closest_sensor = self.__find_closest_sensor(city_coords)
+            print("Data for %s:" % self.__countries[i])
+            self.__download_data_for_sensor_and_analyse_it(closest_sensor, self.__date, city_coords)
+    '''
+
 if __name__ == '__main__':
-    RadiationScrapingTool()
+    a = RadiationScrapingTool()
+    a.check_radiation_in_city_day("Krak", "2017-06-01", 100)
+    '''
