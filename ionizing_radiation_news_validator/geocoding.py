@@ -1,4 +1,4 @@
-from exceptions import CityNotFound, InvalidArgument, Not200Code
+from .exceptions import CityNotFound, InvalidArgument, Not200Code
 import re
 import requests
 import math

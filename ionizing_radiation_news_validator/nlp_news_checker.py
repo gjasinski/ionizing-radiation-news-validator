@@ -1,7 +1,7 @@
 import requests
 import json
 import re
-from exceptions import Not200Code
+from .exceptions import Not200Code
 
 
 class NLPNewsChecker:
@@ -68,8 +68,8 @@ class NLPNewsChecker:
         if self.__scan_text(["solar radiation"]):
             print("This article is about solar radiation")
             return
-        f = open("words_in_favour.json", 'r')
-        json_data = json.loads(f.read())
+        #f = open("words_in_favour.json", 'r')
+        json_data = json.loads(self.__words)
         word_list = list()
         for word in json_data:
             word_list.append(word["word"])
@@ -78,3 +78,5 @@ class NLPNewsChecker:
         else:
             print("This article is not about nuclear radiation")
         self.article_about_radiation = len(self.__scan_text(word_list)) > 4
+
+    __words = "[{\"word\": \"nuclear\"}, {\"word\":\"radiation\"}, {\"word\":\"Sv\"},{\"word\":\"atomic\"}, {\"word\":\"Chernobyl\"}, {\"word\":\"Fukushima\"}, {\"word\":\"disaster\"}, {\"word\":\"nuclearcrisis\"}, {\"word\":\"leak\"}, {\"word\":\"toxic\"}, {\"word\":\"radioactive\"}, {\"word\":\"isotopes\"}, {\"word\":\"power plant\"}, {\"word\":\"accident\"}, {\"word\":\"contamination\"}, {\"word\":\"reactor\"}, {\"word\":\"sivert\"}, {\"word\":\"geiger\"}, {\"word\":\"gray\"}]"

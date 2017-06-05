@@ -1,6 +1,6 @@
-from nlp_news_checker import NLPNewsChecker
-from geocoding import Geocoding
-from exceptions import Not200Code, InvalidArgument, NLPNewsCheckerNotValid
+from .nlp_news_checker import NLPNewsChecker
+from .geocoding import Geocoding
+from .exceptions import Not200Code, InvalidArgument, NLPNewsCheckerNotValid
 import re
 import requests
 import numpy

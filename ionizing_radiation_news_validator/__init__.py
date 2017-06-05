@@ -1,2 +1,2 @@
-from .ionizing_radiation_news_validator import NLPNewsChecker, \
-    RadiationCheckingTool
+from .nlp_news_checker import NLPNewsChecker
+from .radiation_checking_tool import RadiationCheckingTool
