@@ -8,12 +8,13 @@ import time
 import datetime
 import matplotlib.pyplot as plt
 
-class RadiationScrapingTool:
+
+class RadiationCheckingTool:
     def __init__(self, nlp_news_checker = None):
         self.__geocoding = Geocoding()
         if not nlp_news_checker == None:
             if not isinstance(nlp_news_checker, NLPNewsChecker):
-                raise InvalidArgument("RadiationScrapingTool() or RadiationScrapingTool(instance_of_nlp_news_checker)")
+                raise InvalidArgument("RadiationCheckingTool() or RadiationCheckingTool(instance_of_nlp_news_checker)")
             try:
                 self.__date = nlp_news_checker.date
                 self.__cities = self.__map_list_of_countries_to_capital_cities(nlp_news_checker.enumerated_countries)
@@ -27,12 +28,14 @@ class RadiationScrapingTool:
             self.__cities = list()
         self.__get_list_of_active_sensors_and_reactors()
 
+    # Setting up date in format YYYY-MM-DD
     def set_up_date(self, given_date):
         if not re.match("^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}$", given_date):
             print("Date is not valid, please type date in formay YYYY-MM-DD")
         else:
             self.__date = given_date
 
+    # Setting up list of countries. Only european
     def set_up_list_of_countries(self, countries):
         if not isinstance(countries, list):
             print("Please provide countries in list")
@@ -40,6 +43,7 @@ class RadiationScrapingTool:
             self.__cities = self.__map_list_of_countries_to_capital_cities(countries)
             self.__countries = countries
 
+    # Take list of countries and map it to its capital cities
     def __map_list_of_countries_to_capital_cities(self, countries_list):
         result = list()
         for country in countries_list:
@@ -47,8 +51,10 @@ class RadiationScrapingTool:
                 result.append(Geocoding.get_capital_city_by_country(country))
             except Not200Code:
                 print("Capital of " + country + " not found")
+                countries_list.remove(country)
         return result
 
+    # Setting reactors and sensors
     def __get_list_of_active_sensors_and_reactors(self):
         r = requests.get("http://radioactiveathome.org/map/")
         if(not r.status_code == 200):
@@ -68,7 +74,7 @@ class RadiationScrapingTool:
         (self.__reactors_names, self.__reactors_coords) = self.__get_array_tuple_of_reactors(reactors_raw)
         self.__sensors_numpy = self.__get_array_of_sensors(sensors_raw)
 
-    # Converts list of string to numpy array with structure id, latitude, longitude
+    # Converts list of string to numpy array with structure [id, latitude, longitude]
     def __get_array_of_sensors(self, sensors_raw):
         result = numpy.empty((len(sensors_raw), 3))
         pattern_createMarker = re.compile("\(createMarker\(new GLatLng\(")
@@ -87,7 +93,7 @@ class RadiationScrapingTool:
             result[i][0] = int(line[0:end])
         return result
 
-    # Converts list of string to (list with name, numpy array with structure latitude, longitude)
+    # Converts list of string to (list with name, numpy array with structure [latitude, longitude])
     def __get_array_tuple_of_reactors(self, reactors_raw):
         result_names = list()
         result_coords = numpy.empty((len(reactors_raw), 2))
@@ -112,15 +118,16 @@ class RadiationScrapingTool:
     def __get_list_of_sensors_in_range_km(self, coords, range_km):
         list_of_sensors = list()
         for sensor in self.__sensors_numpy:
-            if self.__geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2])) < range_km:
+            if Geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2])) < range_km:
                 list_of_sensors.append((sensor[0], sensor[1], sensor[2]))
         return list_of_sensors
 
     def __get_list_of_reactors_in_range_km(self, coords, range_km):
         list_of_reactors = list()
         for i, reactor in enumerate(self.__reactors_coords):
-            if self.__geocoding.compute_distance_between_two_coordinates(coords, reactor[0], reactor[1]) < range_km:
+            if Geocoding.compute_distance_between_two_coordinates(coords, (reactor[0], reactor[1])) < range_km:
                 list_of_reactors.append((self.__reactors_names[i], reactor[0], reactor[1]))
+        return list_of_reactors
 
     # Scrape pages, download data and return data from one particular day
     # sensor_id - int, date format YYYY-MM-DD - string
@@ -131,7 +138,6 @@ class RadiationScrapingTool:
         searched_date = self.__convert_date_to_timestamp(date)
         current_measurement_id = 0
         results = list()
-
         while True:
             r = requests.get(url_1 + str(current_measurement_id) + url_2 + str(sensor_id))
             if(not r.status_code == 200):
@@ -160,6 +166,7 @@ class RadiationScrapingTool:
 
     # line example
     # 287000059,6,80,2017-04-30 23:46:29,51.803020,19.753744,3.993,n,0,513
+    # returns (date, time, counts, duration of measurement)
     def __extract_data_time_counts_timescale_from_line(self, line):
         splitted_line = line.split(",")
         splitted_date_time = splitted_line[3].split(" ")
@@ -171,31 +178,13 @@ class RadiationScrapingTool:
     def __convert_date_to_timestamp(self, date):
         return time.mktime(datetime.datetime.strptime(date, "%Y-%m-%d").timetuple())
 
+    # Equation source:
+    # http://radioactiveathome.org/boinc/forum_thread.php?id=60&nowrap=true#716
     def __convert_counts_per_time_to_uSv(self, counts, timescale):
         return counts / timescale / 171.232876
 
-    # Download data from sensors in range x km from city
-    def check_radiation_in_city_day(self, city, day, range_km = 100):
-        city_coords = self.__geocoding.get_city_coords(city)
-        sensors_list = self.__get_list_of_sensors_in_range_km(city_coords, range_km)
-        for i, sensor in enumerate(sensors_list):
-            self.__download_data_for_sensor_and_analyse_it(sensor, day, city_coords)
-
-    def __download_data_for_sensor_and_analyse_it(self, sensor, day, city_coords):
-        raw_data = self.__get_sensor_data_from_day(sensor[0], day)
-        if raw_data.any():
-            prepared_data = RadiationScrapingTool.__get_min_max_avg_per_hour(raw_data)
-            RadiationScrapingTool.__create_min_max_avg_graph(prepared_data, (sensor[1], sensor[2]), " Distance from city: %.2f km." % Geocoding.compute_distance_between_two_coordinates(city_coords, (sensor[1], sensor[2])))
-            if RadiationScrapingTool.__is_any_raised_avg_measurement(prepared_data):
-                print("Warning: At least one average measurement is raised. (> 0.3 uSv/h)")
-            else:
-                print("All average measurements are in quota")
-            percentage_of_raised_measurements = RadiationScrapingTool.__get_percentage_of_raised_measurements(raw_data)
-            print("This sensor has %2.2f%% measurements above 0.3 uSv/h" % percentage_of_raised_measurements)
-        else:
-            print("There is no data from this day - sensor sensor position " + str(sensor[1]) + '° ' + str(sensor[1]) + '°')
-
-
+    # Take not analysed sensor data in two dimensional numpy array with format [timestamp, measurement]
+    # Return numpy array 24 rows, 3 cols, format [mininum value, maximum value, average hour value]
     def __get_min_max_avg_per_hour(sensor_data):
         result = numpy.zeros((24,3))
         timestamp = int(sensor_data[0][0])
@@ -225,6 +214,7 @@ class RadiationScrapingTool:
             timestamp  = daytime.timestamp()
         return result
 
+    # Prints graph
     def __create_min_max_avg_graph(prepared_data, coords, extra_info = ''):
         (c1, c2) = coords
         fig, ax = plt.subplots(figsize=(15,5))
@@ -252,26 +242,56 @@ class RadiationScrapingTool:
                 count += 1
         return count * 100 / len(raw_data)
 
+    # Return closes sensor (id, coord1, coord2)
     def __find_closest_sensor(self, coords):
-        closest_sensor_id = -1
-        closest_sensor_distance = 0
+        closest_sensor_id = self.__sensors_numpy[0][0]
+        closest_sensor_distance = Geocoding.compute_distance_between_two_coordinates(coords, (self.__sensors_numpy[0][1], self.__sensors_numpy[0][2]))
         for sensor in self.__sensors_numpy:
-            distance = self.__geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2]))
+            distance = Geocoding.compute_distance_between_two_coordinates(coords, (sensor[1], sensor[2]))
             if distance < closest_sensor_distance:
                 closest_sensor_distance = distance
                 closest_sensor = sensor
         return closest_sensor
 
-    def check_radiation_in_cities(self):
+    # Download data from sensors in range x km from city, analyse it and print results
+    def check_radiation_in_city_day(self, city, day, range_km = 100):
+        city_coords = self.__geocoding.get_city_coords(city)
+        sensors_list = self.__get_list_of_sensors_in_range_km(city_coords, range_km)
+        for i, sensor in enumerate(sensors_list):
+            self.__download_data_for_sensor_and_analyse_it(sensor, day, city_coords)
+
+
+    # Download data from one nearest sensor from city setted earlier, analyse it and print results
+    def check_radiation_in_countries(self):
         city_list_data = list()
-        for i, city in enumerate(self.cities):
+        for i, city in enumerate(self.__cities):
             city_coords = self.__geocoding.get_city_coords(city)
             closest_sensor = self.__find_closest_sensor(city_coords)
-            print("Data for %s:" % self.__countries[i])
+            print("\nData for %s:" % self.__countries[i])
             self.__download_data_for_sensor_and_analyse_it(closest_sensor, self.__date, city_coords)
-    '''
 
-if __name__ == '__main__':
-    a = RadiationScrapingTool()
-    a.check_radiation_in_city_day("Krak", "2017-06-01", 100)
-    '''
+    # Download data for one sensor, one day, for one city, and visualise it
+    def __download_data_for_sensor_and_analyse_it(self, sensor, day, city_coords):
+        raw_data = self.__get_sensor_data_from_day(sensor[0], day)
+        if raw_data.any():
+            prepared_data = RadiationCheckingTool.__get_min_max_avg_per_hour(raw_data)
+            RadiationCheckingTool.__create_min_max_avg_graph(prepared_data, (sensor[1], sensor[2]), " Distance from city: %.2f km." % Geocoding.compute_distance_between_two_coordinates(city_coords, (sensor[1], sensor[2])))
+            if RadiationCheckingTool.__is_any_raised_avg_measurement(prepared_data):
+                print("Warning: At least one average measurement is raised. (> 0.3 uSv/h)")
+            else:
+                print("All average measurements are in quota")
+            percentage_of_raised_measurements = RadiationCheckingTool.__get_percentage_of_raised_measurements(raw_data)
+            print("This sensor has %2.2f%% measurements above 0.3 uSv/h" % percentage_of_raised_measurements)
+        else:
+            print("There is no data from this day - sensor sensor position " + str(sensor[1]) + '° ' + str(sensor[1]) + '°')
+
+    # Print reactors in range of x km
+    def print_reactors_in_range(self, city, range_km = 100):
+        city_coords = self.__geocoding.get_city_coords(city)
+        reactor_list = self.__get_list_of_reactors_in_range_km(city_coords, range_km)
+        if len(reactor_list) == 0:
+            print("No reactors in range %d" % range_km)
+        else:
+            print("Reactors in range %d" % range_km)
+        for reactor in reactor_list:
+            print(('{0:} {1:.3f} {2:.3f}'.format(reactor[0], reactor[1], reactor[2])))
