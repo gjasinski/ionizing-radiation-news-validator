@@ -11,7 +11,7 @@ class NLPNewsChecker:
 
     def __download_page(self):
         r = requests.get(self.__url)
-        if(not r.status_code == 200):
+        if (not r.status_code == 200):
             raise Not200Code()
         else:
             self.__article_data = r.text
@@ -35,7 +35,7 @@ class NLPNewsChecker:
 
     def __get_european_countries_with_capital_cities(self):
         r = requests.get("https://restcountries.eu/rest/v2/region/europe")
-        if(not r.status_code == 200):
+        if (not r.status_code == 200):
             raise Not200Code()
         json_data = json.loads(r.text)
         self.country_and_city = dict()
@@ -59,7 +59,7 @@ class NLPNewsChecker:
         if self.enumerated_countries:
             print("Enumerated european countries:")
             for country in self.enumerated_countries:
-                    print(country)
+                print(country)
         else:
             print("There are no enumerated country in article.")
 

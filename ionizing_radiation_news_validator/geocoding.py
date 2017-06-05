@@ -10,7 +10,7 @@ class Geocoding:
 
     def __init__(self):
         r = requests.get(self.url)
-        if(not r.status_code == 200):
+        if (not r.status_code == 200):
             raise Not200Code()
         else:
             self.page = str(r.content)
@@ -41,7 +41,8 @@ class Geocoding:
         return (coord1, coord2)
 
     # Computing distance according to formula from
-    # https://pl.wikibooks.org/wiki/Astronomiczne_podstawy_geografii/Odleg%C5%82o%C5%9Bci
+    # https://pl.wikibooks.org/wiki/Astronomiczne_podstawy_geografii/Odleg
+    # %C5%82o%C5%9Bci
     @staticmethod
     def compute_distance_between_two_coordinates(coord1, coord2):
         try:
@@ -51,10 +52,10 @@ class Geocoding:
             raise InvalidArgument("compute_distance_between_two_coordinates(\
                 (x1, y1), (x2, y2))")
         longitude_component = (long2 - long1) ** 2
-        latitude_component = (math.cos(long1 * math.pi / 180) * (lat2 - lat1))\
-            ** 2
-        return (longitude_component + latitude_component) ** 0.5 * 40075.704 /\
-            360
+        latitude_component = (math.cos(long1 * math.pi / 180) *
+                              (lat2 - lat1)) ** 2
+        return (longitude_component + latitude_component) ** 0.5 *\
+            40075.704 / 360
 
     def compute_distance_between_two_cities(self, city1, city2):
         coord1 = self.get_city_coords(city1)
@@ -65,7 +66,7 @@ class Geocoding:
     @staticmethod
     def get_capital_city_by_country(country):
         r = requests.get("https://restcountries.eu/rest/v2/name/" + country)
-        if(not r.status_code == 200):
+        if (not r.status_code == 200):
             raise Not200Code()
         else:
             json_data = json.loads(r.text)
