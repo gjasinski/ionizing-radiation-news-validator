@@ -6,7 +6,7 @@ import requests
 import numpy
 import time
 import datetime
-import matplotlib.pyplot as plt
+import matplotlib as plt
 
 
 class RadiationCheckingTool:
